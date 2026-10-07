@@ -25,7 +25,7 @@ process.on('SIGTERM', () => { try { fs.writeFileSync(SAVE_FILE, JSON.stringify(e
 
 const wss = new WebSocketServer({
   port: PORT,
-  maxPayload: 2048,
+  maxPayload: 32768,
   verifyClient: (info) => !ORIGIN || info.origin === ORIGIN,
 });
 const h256 = (s) => crypto.createHash('sha256').update(String(s)).digest();
@@ -50,6 +50,7 @@ wss.on('connection', (ws, req) => {
     const now = Date.now();                                  // simple rate limit: 40 msgs/sec
     tokens = Math.min(40, tokens + (now - last) / 25); last = now;
     if (--tokens < 0) return;
+    if (raw.length > 2048 && !raw.toString('utf8', 0, 12).startsWith('{"t":"skin"')) return;   // only skins may be large
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
 
     if (!me) {
@@ -66,7 +67,7 @@ wss.on('connection', (ws, req) => {
       me = { id: nextId++, name: clean(m.name || 'Player', 16) || 'Player', p: {} };
       players.set(ws, me);
       send(ws, { t: 'welcome', id: me.id, now: Date.now(), world: WORLD, edits, items: [...items.values()],
-        peers: [...players.values()].filter(q => q !== me).map(q => ({ id: q.id, name: q.name, p: q.p })) });
+        peers: [...players.values()].filter(q => q !== me).map(q => ({ id: q.id, name: q.name, p: q.p, skin: q.skin })) });
       broadcast({ t: 'join', id: me.id, name: me.name }, ws);
       console.log(`+ ${me.name} (${players.size}/${MAX_PLAYERS})`);
       return;
@@ -84,6 +85,11 @@ wss.on('connection', (ws, req) => {
       if (![x, y, z, v].every(Number.isInteger) || y < 0 || y > 255 || v < 0 || v > 39 || Math.abs(x) > 1e7 || Math.abs(z) > 1e7) return;
       edits[x + ',' + y + ',' + z] = v; dirty = true;
       broadcast({ t: 'edit', e: [x, y, z, v] }, ws);
+    } else if (m.t === 'skin' && typeof m.img === 'string') {                         // a player's skin (64x64 PNG)
+      const nowMs = Date.now();
+      if (nowMs - (me.skinT || 0) < 2000 || m.img.length > 24000 || !/^data:image\/png;base64,[A-Za-z0-9+\/=]+$/.test(m.img)) return;
+      me.skinT = nowMs; me.skin = m.img;
+      broadcast({ t: 'skin', id: me.id, img: m.img }, ws);
     } else if (m.t === 'drop' && m.item && typeof m.item.u === 'string') {          // someone dropped an item
       const q = m.item, u = clean(q.u, 24);
       if (!u || items.has(u) || items.size >= 400) return;
