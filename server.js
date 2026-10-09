@@ -77,12 +77,12 @@ wss.on('connection', (ws, req) => {
       const p = {};
       if (typeof m.p.n === 'string') p.n = clean(m.p.n, 16);
       if (Array.isArray(m.p.p) && m.p.p.length === 3 && m.p.p.every(num)) p.p = m.p.p;
-      for (const k of ['y', 't', 'c', 'a']) if (num(m.p[k])) p[k] = m.p[k];
+      for (const k of ['y', 't', 'c', 'a', 'e', 'g']) if (num(m.p[k])) p[k] = m.p[k];
       Object.assign(me.p, p);
       broadcast({ t: 'pres', id: me.id, p }, ws);
     } else if (m.t === 'edit' && Array.isArray(m.e) && m.e.length === 4) {
       const [x, y, z, v] = m.e;
-      if (![x, y, z, v].every(Number.isInteger) || y < 0 || y > 255 || v < 0 || v > 39 || Math.abs(x) > 1e7 || Math.abs(z) > 1e7) return;
+      if (![x, y, z, v].every(Number.isInteger) || y < 0 || y > 255 || v < 0 || v > 65535 || Math.abs(x) > 1e7 || Math.abs(z) > 1e7) return;
       edits[x + ',' + y + ',' + z] = v; dirty = true;
       broadcast({ t: 'edit', e: [x, y, z, v] }, ws);
     } else if (m.t === 'skin' && typeof m.img === 'string') {                         // a player's skin (64x64 PNG)
@@ -93,7 +93,7 @@ wss.on('connection', (ws, req) => {
     } else if (m.t === 'drop' && m.item && typeof m.item.u === 'string') {          // someone dropped an item
       const q = m.item, u = clean(q.u, 24);
       if (!u || items.has(u) || items.size >= 400) return;
-      if (![q.id, q.n].every(Number.isInteger) || q.id < 1 || q.id > 120 || q.n < 1 || q.n > 64) return;
+      if (![q.id, q.n].every(Number.isInteger) || q.id < 1 || q.id > 2047 || q.n < 1 || q.n > 64) return;
       if (![q.x, q.y, q.z].every(num) || !Array.isArray(q.v) || q.v.length !== 3 || !q.v.every(num)) return;
       const it = { u, id: q.id, n: q.n, x: q.x, y: q.y, z: q.z, v: q.v.map(a => Math.max(-20, Math.min(20, a))) };
       items.set(u, it); setTimeout(() => items.delete(u), 300000);
@@ -108,7 +108,7 @@ wss.on('connection', (ws, req) => {
       if (me.hits.length >= 8) return; me.hits.push(nowMs);
       const a = me.p.p, b = target[1].p.p;
       if (a && b && Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 12) return;  // too far away
-      const dmg = Math.max(1, Math.min(10, Math.round(+m.dmg || 1)));
+      const dmg = Math.max(1, Math.min(40, Math.round(+m.dmg || 1)));
       const kb = Array.isArray(m.kb) && m.kb.length === 2 && m.kb.every(num) ? m.kb.map(v => Math.max(-1, Math.min(1, v))) : [0, 0];
       send(target[0], { t: 'hit', from: me.id, dmg, kb });
     } else if (m.t === 'died') {
